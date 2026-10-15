@@ -7755,13 +7755,13 @@ nghttp2_session_get_stream_effective_local_window_size(nghttp2_session *session,
 int32_t nghttp2_session_get_stream_local_window_size(nghttp2_session *session,
                                                      int32_t stream_id) {
   nghttp2_stream *stream;
-  int32_t size;
+  int64_t size;
   stream = nghttp2_session_get_stream(session, stream_id);
   if (stream == NULL) {
     return -1;
   }
 
-  size = stream->local_window_size - stream->recv_window_size;
+  size = (int64_t)stream->local_window_size - (int64_t)stream->recv_window_size;
 
   /* size could be negative if local endpoint reduced
      SETTINGS_INITIAL_WINDOW_SIZE */
@@ -7769,7 +7769,14 @@ int32_t nghttp2_session_get_stream_local_window_size(nghttp2_session *session,
     return 0;
   }
 
-  return size;
+  /* The difference can exceed NGHTTP2_MAX_WINDOW_SIZE when the local
+     window was raised after recv_window_size went deep negative with
+     nghttp2_submit_window_update(). */
+  if (size > NGHTTP2_MAX_WINDOW_SIZE) {
+    return NGHTTP2_MAX_WINDOW_SIZE;
+  }
+
+  return (int32_t)size;
 }
 
 int32_t

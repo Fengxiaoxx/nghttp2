@@ -85,6 +85,7 @@ static const MunitTest tests[] = {
   munit_void_test(test_nghttp2_session_send_push_promise),
   munit_void_test(test_nghttp2_session_is_my_stream_id),
   munit_void_test(test_nghttp2_session_upgrade2),
+  munit_void_test(test_nghttp2_session_get_stream_local_window_size_overflow),
   munit_void_test(test_nghttp2_submit_data),
   munit_void_test(test_nghttp2_submit_data_read_length_too_large),
   munit_void_test(test_nghttp2_submit_data_read_length_smallest),
@@ -5417,6 +5418,32 @@ void test_nghttp2_session_is_my_stream_id(void) {
   assert_false(nghttp2_session_is_my_stream_id(session, 0));
   assert_true(nghttp2_session_is_my_stream_id(session, 1));
   assert_false(nghttp2_session_is_my_stream_id(session, 2));
+
+  nghttp2_session_del(session);
+}
+
+void test_nghttp2_session_get_stream_local_window_size_overflow(void) {
+  nghttp2_session *session;
+  nghttp2_session_callbacks callbacks = {
+    .send_callback2 = null_send_callback,
+  };
+  nghttp2_stream *stream;
+
+  nghttp2_session_server_new(&session, &callbacks, NULL);
+  assert_int(0, ==, nghttp2_session_upgrade2(session, NULL, 0, 1, NULL));
+
+  /* local_window_size = 2147418112 and recv_window_size = -2147483647 are
+     reachable with submit_window_update() plus a SETTINGS that raises the
+     initial window size.  The getter must not overflow int32 computing
+     their difference; the effective window is capped at
+     NGHTTP2_MAX_WINDOW_SIZE. */
+  stream = nghttp2_session_get_stream(session, 1);
+  assert_ptr(stream, !=, NULL);
+  stream->local_window_size = 2147418112;
+  stream->recv_window_size = -2147483647;
+
+  assert_int(NGHTTP2_MAX_WINDOW_SIZE, ==,
+             nghttp2_session_get_stream_local_window_size(session, 1));
 
   nghttp2_session_del(session);
 }
